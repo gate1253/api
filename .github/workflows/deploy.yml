@@ -43,8 +43,8 @@ jobs:
         run: |
           # Use unquoted heredoc to allow shell variable expansion
           cat > wrangler.toml <<EOF
-          name = "res302"
-          main = "workers/res302-worker.js"
+          name = "api"
+          main = "workers/api-worker.js"
           type = "module"
           compatibility_date = "2025-11-08"
           account_id = "${CF_ACCOUNT_ID}"
