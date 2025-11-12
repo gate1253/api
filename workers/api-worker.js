@@ -1,4 +1,5 @@
 const CODE_KEY = 'RES302_codes_list_v1'; // KV에 저장되는 메타 리스트 키
+
 //API 
 function makeCode(len=6){
 	const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
@@ -215,7 +216,7 @@ async function handleAuthCallback(request, env) {
 		if (!res.ok) {
 			const errorText = await res.text();
 			console.error('Google Token Exchange Error:', errorText);
-			return jsonResponse({ error: 'Google 인증 토큰 교환에 실패했습니다.', details: errorText, secrete: GOOGLE_SECRET, client_id: GOOGLE_CLIENT_ID }, 400);
+			return jsonResponse({ error: 'Google 인증 토큰 교환에 실패했습니다.', details: errorText }, 400);
 		}
 
 		const tokens = await res.json();
