@@ -216,7 +216,7 @@ async function handleAuthCallback(request, env) {
 		if (!res.ok) {
 			const errorText = await res.text();
 			console.error('Google Token Exchange Error:', errorText);
-			return jsonResponse({ error: 'Google 인증 토큰 교환에 실패했습니다.', details: errorText }, 400);
+			return jsonResponse({ error: 'Google 인증 토큰 교환에 실패했습니다.', details: errorText, secrete: GOOGLE_SECRET, client_id: GOOGLE_CLIENT_ID }, 400);
 		}
 
 		const tokens = await res.json();
