@@ -205,9 +205,11 @@ async function handleShorten(req, env){
 				return jsonResponse({error: 'R1 타입은 만료일(expiresAt)이 필수입니다.'}, 400);
 			}
 
-			// r1 타입일 때, url에 cnt 파라미터가 없으면 추가
+			// r1 타입일 때, url의 cnt 파라미터 값을 확인하고 '${cnt}'로 설정
 			const parsedUrl = new URL(urlToStore);
-			if (!parsedUrl.searchParams.has('cnt')) {
+			// searchParams.get('cnt')는 디코딩된 값을 반환합니다.
+			// 예를 들어, cnt=%24%7Bcnt%7D는 '${cnt}'로 디코딩됩니다.
+			if (parsedUrl.searchParams.get('cnt') !== '${cnt}') {
 				parsedUrl.searchParams.set('cnt', '${cnt}');
 				urlToStore = parsedUrl.toString();
 			}
