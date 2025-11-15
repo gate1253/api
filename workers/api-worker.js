@@ -84,8 +84,8 @@ async function validateApiKey(request, env) {
 
 async function handleShorten(req, env){
 	try{
-		const body = await req.json();
-		let {url, alias} = body; // 변경: uniqueUserId를 body에서 받지 않음
+		const body = await req.json(); // 요청 본문 파싱
+		let {url, alias, type} = body; // 변경: type 파라미터 추가
 		if(!url) return jsonResponse({error:'url 필요'}, 400);
 		// 간단한 url 보정
 		if(!/^https?:\/\//i.test(url)) url = 'https://' + url;
@@ -175,18 +175,21 @@ async function handleShorten(req, env){
 			message
 		};
 
-		if (alias) {
-			// 커스텀 코드(alias)가 있는 경우, r3.ggm.kr을 shortUrl로, r2.ggm.kr을 shortUrl2로 설정
-			responsePayload.shortUrl = `https://r3.ggm.kr/${fullRedirectPath}`;
+		// 추가: type에 따라 동적으로 shortUrl 생성
+		const validTypes = ['r1', 'r2', 'r3', 'r5'];
+		const serviceType = validTypes.includes(type) ? type : 'r3'; // type이 없거나 유효하지 않으면 'r3'를 기본값으로 사용
+
+		responsePayload.shortUrl = `https://${serviceType}.ggm.kr/${fullRedirectPath}`;
+
+		// 기존 로직 유지: alias가 있을 때만 shortUrl2 (r2.ggm.kr)를 추가로 제공
+		// 단, type이 'r2'인 경우는 이미 shortUrl이 r2.ggm.kr이므로 중복해서 제공하지 않음
+		if (alias && serviceType !== 'r2') {
 			responsePayload.shortUrl2 = `https://r2.ggm.kr/${fullRedirectPath}`;
-		} else {
-			// 랜덤 코드인 경우 RES302 URL(r3.ggm.kr)을 shortUrl로 설정
-			responsePayload.shortUrl = `https://r3.ggm.kr/${fullRedirectPath}`;
 		}
 
 		return jsonResponse(responsePayload, status);
 	}catch(e){
-		console.error('handleShorten error:', e); // 오류 로깅 추가
+		console.error('handleShorten error:', e.message, e.stack); // 오류 로깅 강화
 		return jsonResponse({error:'서버 오류'}, 500);
 	}
 }
