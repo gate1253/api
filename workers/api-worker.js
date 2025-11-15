@@ -204,6 +204,14 @@ async function handleShorten(req, env){
 			if (!expiresAt) {
 				return jsonResponse({error: 'R1 타입은 만료일(expiresAt)이 필수입니다.'}, 400);
 			}
+
+			// r1 타입일 때, url에 cnt 파라미터가 없으면 추가
+			const parsedUrl = new URL(urlToStore);
+			if (!parsedUrl.searchParams.has('cnt')) {
+				parsedUrl.searchParams.set('cnt', '${cnt}');
+				urlToStore = parsedUrl.toString();
+			}
+
 			try {
 				// 입력된 expiresAt 문자열을 항상 UTC로 처리합니다.
 				// 'Z'가 없는 ISO 형식 문자열은 new Date()가 로컬 시간으로 해석하는 것을 방지하기 위해
