@@ -90,9 +90,14 @@ async function handleShorten(req, env){
 		// 간단한 url 보정
 		if(!/^https?:\/\//i.test(url)) url = 'https://' + url;
 		
+		// 추가: type에 따라 동적으로 shortUrl 생성
+		const validTypes = ['r1', 'r2', 'r3', 'r5'];
+		const serviceType = validTypes.includes(type) ? type : 'r3'; // type이 없거나 유효하지 않으면 'r3'를 기본값으로 사용
+
 		let code; // 최종적으로 KV에 저장될 코드 (alias 또는 랜덤)
 		let fullRedirectPath; // 응답 및 CODE_KEY에 저장될 전체 경로 (code 또는 uniqueUserId/alias)
 		let operationType = 'create'; // 'create' 또는 'update'
+		let uniqueUserIdFromApiKey = null; // API 키로 확인된 사용자 ID
 
 		if(alias){ // 커스텀 코드가 제공된 경우
 			const validationResult = await validateApiKey(req, env);
@@ -100,7 +105,7 @@ async function handleShorten(req, env){
 				return validationResult;
 			}
             // 변경: API 키로 검증된 사용자의 uniqueUserId를 직접 사용
-            const uniqueUserIdFromApiKey = validationResult.user.uniqueUserId;
+            uniqueUserIdFromApiKey = validationResult.user.uniqueUserId;
 
             code = alias.trim();
             // 추가: 커스텀 코드(alias)에 선행 '/'가 있으면 제거
@@ -121,31 +126,51 @@ async function handleShorten(req, env){
                     return jsonResponse({ok:true, code: fullRedirectPath, shortUrl: `${new URL(req.url).origin}/${fullRedirectPath}`, message: 'URL이 이미 존재하며 변경사항이 없습니다.'}, 200);
                 }
             }
-		}else{ // alias가 제공되지 않은 경우 (무작위 코드 생성)
-			// API 키 검증은 필수는 아니지만, 익명 사용자의 남용 방지를 위해 추가할 수 있음
-			// 현재는 익명 사용자도 무작위 코드 생성 허용
+		} else { // alias가 제공되지 않은 경우 (무작위 코드 생성)
+			// 추가: API 키가 있으면 사용자 인증 시도
+			const authHeader = req.headers.get('Authorization');
+			if (authHeader && authHeader.startsWith('Bearer ')) {
+				const validationResult = await validateApiKey(req, env);
+				if (validationResult instanceof Response) {
+					return validationResult; // 유효하지 않은 키는 에러 처리
+				}
+				uniqueUserIdFromApiKey = validationResult.user.uniqueUserId;
+			}
+
 			for(let i=0;i<6;i++){
 				const c = makeCode();
-				// KV에서 무작위 코드 존재 여부 확인 (글로벌)
-				if(!(await env.RES302_KV.get(c))){ // 기존처럼 짧은 코드 사용
+				// 사용자가 인증된 경우, 사용자별 경로로 충돌 확인. 아니면 글로벌 경로로 확인.
+				const checkPath = uniqueUserIdFromApiKey ? `${uniqueUserIdFromApiKey}/${c}` : c;
+				if(!(await env.RES302_KV.get(checkPath))){
 					code = c; break;
 				}
 			}
 			if(!code) code = makeCode(8); // 6번 시도 후에도 코드 생성 실패 시 대체
-            fullRedirectPath = code; // 리다이렉트 경로는 무작위 코드 자체
-            
-            // 무작위 코드의 경우 기존 URL 존재 여부 확인
-            const existingUrl = await env.RES302_KV.get(fullRedirectPath);
-            if(existingUrl){
-                // 무작위 코드는 업데이트 개념이 아님. 충돌 시 재시도해야 함.
-                // 이 로직은 makeCode 루프에서 이미 처리되므로, 여기에 도달하면 새 코드임.
-                // 만약 makeCode(8)로 생성된 코드가 충돌하면, 이 부분에서 에러 처리 필요.
-                // 현재 makeCode 루프가 충돌 방지 역할을 하므로, 여기서는 새 코드라고 가정.
-            }
+
+			if (uniqueUserIdFromApiKey) {
+				fullRedirectPath = `${uniqueUserIdFromApiKey}/${code}`;
+			} else {
+				fullRedirectPath = code; // 익명 사용자는 이전과 같이 글로벌 경로 사용
+			}
 		}
 		
+		// KV에 저장할 최종 URL 값
+		let urlToStore = url;
+
+		if (serviceType === 'r5') {
+			// r5 타입은 r2 서비스로 리디렉션되도록, 내부적으로 r2를 호출하여 그 결과 URL을 저장합니다.
+			const newBody = { ...body, type: 'r2', alias: undefined };
+			const newReq = new Request(req, { body: JSON.stringify(newBody) });
+			
+			const r2Response = await handleShorten(newReq, env);
+			if (!r2Response.ok) return r2Response; // r2 처리 중 오류 발생 시 그대로 반환
+
+			const r2Result = await r2Response.json();
+			urlToStore = r2Result.shortUrl; // r2로 생성된 shortUrl (예: https://r2.ggm.kr/...)을 저장할 값으로 설정
+		}
+
 		// KV에 URL 저장/업데이트 (fullRedirectPath를 키로 사용)
-		await env.RES302_KV.put(fullRedirectPath, url);
+		await env.RES302_KV.put(fullRedirectPath, urlToStore);
 
 		// 메타 리스트(CODE_KEY) 업데이트
 		const raw = await env.RES302_KV.get(CODE_KEY);
@@ -154,14 +179,14 @@ async function handleShorten(req, env){
 		if (operationType === 'update') {
 			const index = list.findIndex(item => item.code === fullRedirectPath); // fullRedirectPath로 찾음
 			if (index !== -1) {
-				list[index].url = url;
+				list[index].url = urlToStore;
 				list[index].updatedAt = new Date().toISOString(); // 업데이트 시간 추가
 			} else {
 				// 리스트에 없는 경우 추가 (새로운 커스텀 코드를 업데이트한 경우 등)
-				list.push({code: fullRedirectPath, url, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()});
+				list.push({code: fullRedirectPath, url: urlToStore, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()});
 			}
 		} else { // operationType === 'create'
-			list.push({code: fullRedirectPath, url, createdAt: new Date().toISOString()});
+			list.push({code: fullRedirectPath, url: urlToStore, createdAt: new Date().toISOString()});
 		}
 
 		await env.RES302_KV.put(CODE_KEY, JSON.stringify(list));
@@ -175,17 +200,8 @@ async function handleShorten(req, env){
 			message
 		};
 
-		// 추가: type에 따라 동적으로 shortUrl 생성
-		const validTypes = ['r1', 'r2', 'r3', 'r5'];
-		const serviceType = validTypes.includes(type) ? type : 'r3'; // type이 없거나 유효하지 않으면 'r3'를 기본값으로 사용
 
 		responsePayload.shortUrl = `https://${serviceType}.ggm.kr/${fullRedirectPath}`;
-
-		// 기존 로직 유지: alias가 있을 때만 shortUrl2 (r2.ggm.kr)를 추가로 제공
-		// 단, type이 'r2'인 경우는 이미 shortUrl이 r2.ggm.kr이므로 중복해서 제공하지 않음
-		if (alias && serviceType !== 'r2') {
-			responsePayload.shortUrl2 = `https://r2.ggm.kr/${fullRedirectPath}`;
-		}
 
 		return jsonResponse(responsePayload, status);
 	}catch(e){
