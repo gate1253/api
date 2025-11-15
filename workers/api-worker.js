@@ -156,8 +156,21 @@ async function handleShorten(req, env){
 		
 		// KV에 저장할 최종 URL 값
 		let urlToStore = url;
+		let contentLength = null; // r5 타입에서 사용할 content-length
 
 		if (serviceType === 'r5') {
+
+			// 추가: 원본 URL에 HEAD 요청을 보내 Content-Length 가져오기
+			try {
+				const headResponse = await fetch(url, { method: 'HEAD' });
+				if (headResponse.ok && headResponse.headers.has('content-length')) {
+					contentLength = headResponse.headers.get('content-length');
+				}
+			} catch (e) {
+				console.warn(`Could not fetch content-length for ${url}:`, e.message);
+				return jsonResponse({error:`Could not fetch content-length for ${url}:`}, 400);
+			}
+
 			// r5 타입은 r2 서비스로 리디렉션되도록, 내부적으로 r2를 호출하여 그 결과 URL을 저장합니다.
 			const newBody = { ...body, type: 'r2', alias: undefined };
 			const newReq = new Request(req, { body: JSON.stringify(newBody) });
@@ -166,7 +179,24 @@ async function handleShorten(req, env){
 			if (!r2Response.ok) return r2Response; // r2 처리 중 오류 발생 시 그대로 반환
 
 			const r2Result = await r2Response.json();
-			urlToStore = r2Result.shortUrl; // r2로 생성된 shortUrl (예: https://r2.ggm.kr/...)을 저장할 값으로 설정
+			let r2Url = new URL(r2Result.shortUrl);
+
+			// contentLength를 기반으로 트래픽 쉐이핑 파라미터 추가
+			if (contentLength) {
+				const sizeInMB = parseInt(contentLength, 10) / (1024 * 1024);
+				// Gcore 형식(speed, buffer)에 맞춰 파라미터 설정
+				if (sizeInMB > 1000) { // 1GB 초과
+					r2Url.searchParams.set('speed', '1024k'); // 1MB/s
+					r2Url.searchParams.set('buffer', '2048k'); // 버퍼는 속도의 2배 정도로 설정
+				} else if (sizeInMB > 100) { // 100MB 초과
+					r2Url.searchParams.set('speed', '5120k'); // 5MB/s
+					r2Url.searchParams.set('buffer', '10240k'); // 버퍼는 속도의 2배 정도로 설정
+				}
+				// 100MB 이하는 파라미터 없음 (최대 속도)
+			}
+
+			// r2로 생성된 shortUrl에 트래픽 쉐이핑 파라미터를 추가하여 저장할 값으로 설정
+			urlToStore = r2Url.toString();
 		}
 
 		// KV에 URL 저장/업데이트 (fullRedirectPath를 키로 사용)
@@ -183,10 +213,13 @@ async function handleShorten(req, env){
 				list[index].updatedAt = new Date().toISOString(); // 업데이트 시간 추가
 			} else {
 				// 리스트에 없는 경우 추가 (새로운 커스텀 코드를 업데이트한 경우 등)
-				list.push({code: fullRedirectPath, url: urlToStore, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()});
+				const newItem = {code: fullRedirectPath, url: urlToStore, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()};
+				if (contentLength) newItem.contentLength = contentLength;
+				list.push(newItem);
 			}
 		} else { // operationType === 'create'
-			list.push({code: fullRedirectPath, url: urlToStore, createdAt: new Date().toISOString()});
+			const newItem = {code: fullRedirectPath, url: urlToStore, createdAt: new Date().toISOString()};
+			list.push(newItem);
 		}
 
 		await env.RES302_KV.put(CODE_KEY, JSON.stringify(list));
