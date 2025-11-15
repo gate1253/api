@@ -32,13 +32,19 @@ jobs:
 
       - name: Create wrangler.toml from secrets
         env:
+          # CF_ACCOUNT_ID 네임스페이스 ID
           CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+          # RES302_KV 네임스페이스 ID
           RES302_KV: ${{ secrets.RES302_KV }}
-          # 추가: USER_KV 네임스페이스 ID
+          # REQ_TIME_KV 네임스페이스 ID
+          REQ_TIME_KV: ${{ secrets.REQ_TIME_KV }}
+          # REQ_COUNT_KV 네임스페이스 ID
+          REQ_COUNT_KV: ${{ secrets.REQ_COUNT_KV }}
+          # USER_KV 네임스페이스 ID
           USER_KV: ${{ secrets.USER_KV }}
-          # 추가: API_KEY_TO_SUB_KV 네임스페이스 ID
+          # API_KEY_TO_SUB_KV 네임스페이스 ID
           API_KEY_TO_SUB_KV: ${{ secrets.API_KEY_TO_SUB_KV }}
-          # 추가: GOOGLE_SUB_TO_USER_ID_KV 네임스페이스 ID
+          # GOOGLE_SUB_TO_USER_ID_KV 네임스페이스 ID
           GOOGLE_SUB_TO_USER_ID_KV: ${{ secrets.GOOGLE_SUB_TO_USER_ID_KV }}
         run: |
           # Use unquoted heredoc to allow shell variable expansion
@@ -50,11 +56,15 @@ jobs:
           account_id = "${CF_ACCOUNT_ID}"
           kv_namespaces = [
             { binding = "RES302_KV", id = "${RES302_KV}" },
-            # 추가: USER_KV 바인딩
+            # USER_KV 바인딩
             { binding = "USER_KV", id = "${USER_KV}" },
-            # 추가: API_KEY_TO_SUB_KV 바인딩
+            # API_KEY_TO_SUB_KV 바인딩
             { binding = "API_KEY_TO_SUB_KV", id = "${API_KEY_TO_SUB_KV}" },
-            # 추가: GOOGLE_SUB_TO_USER_ID_KV 바인딩
+            # REQ_TIME_KV 바인딩
+            { binding = "REQ_TIME_KV", id = "${REQ_TIME_KV}" },
+            # REQ_COUNT_KV 바인딩
+            { binding = "REQ_COUNT_KV", id = "${REQ_COUNT_KV}" },
+            # GOOGLE_SUB_TO_USER_ID_KV 바인딩
             { binding = "GOOGLE_SUB_TO_USER_ID_KV", id = "${GOOGLE_SUB_TO_USER_ID_KV}" }
           ]
           EOF
