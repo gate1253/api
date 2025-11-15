@@ -85,7 +85,7 @@ async function validateApiKey(request, env) {
 async function handleShorten(req, env){
 	try{
 		const body = await req.json(); // 요청 본문 파싱
-		let {url, alias, type, expiresAt, isUtc} = body; // R1을 위한 expiresAt, isUtc 파라미터 추가
+		let {url, alias, type, expiresAt} = body; // R1을 위한 expiresAt 파라미터
 		if(!url) return jsonResponse({error:'url 필요'}, 400);
 		// 간단한 url 보정
 		if(!/^https?:\/\//i.test(url)) url = 'https://' + url;
@@ -205,21 +205,22 @@ async function handleShorten(req, env){
 				return jsonResponse({error: 'R1 타입은 만료일(expiresAt)이 필수입니다.'}, 400);
 			}
 			try {
-				let expirationDate = new Date(expiresAt);
+				// 입력된 expiresAt 문자열을 항상 UTC로 처리합니다.
+				// 'Z'가 없는 ISO 형식 문자열은 new Date()가 로컬 시간으로 해석하는 것을 방지하기 위해
+				// 문자열 끝에 'Z'를 붙여 UTC임을 명시합니다.
+				// 예: '2025-11-15T16:45' -> '2025-11-15T16:45Z'
+				const utcExpiresAt = expiresAt.endsWith('Z') ? expiresAt : expiresAt + 'Z';
+				const expirationDate = new Date(utcExpiresAt);
+
 				if (isNaN(expirationDate.getTime())) {
-					throw new Error('Invalid date format');
+					// 유효하지 않은 날짜 형식일 경우 오류를 발생시킵니다.
+					// getTime()이 NaN을 반환하면 날짜가 유효하지 않음을 의미합니다.
+					throw new Error(`Invalid date format: ${expiresAt}`);
 				}
 
-				// isUtc가 false이면, 입력된 시간을 로컬 시간으로 간주하고 UTC로 변환합니다.
-				// new Date()는 ISO 8601 형식의 문자열을 로컬 시간으로 해석합니다.
-				// getTime()은 항상 UTC 기준의 타임스탬프를 반환하므로, isUtc가 false일 때 별도 변환이 필요 없습니다.
-				// isUtc가 true이면, 입력된 시간이 이미 UTC라고 가정합니다. 'Z'를 붙여 UTC로 명시적으로 파싱합니다.
-				if (isUtc) {
-					expirationDate = new Date(expiresAt.endsWith('Z') ? expiresAt : expiresAt + 'Z');
-				}
 				await env.REQ_TIME_KV.put(fullRedirectPath, expirationDate.getTime().toString());
 			} catch (e) {
-				return jsonResponse({error: '유효하지 않은 만료일 형식입니다. (예: YYYY-MM-DDTHH:MM)'}, 400);
+				return jsonResponse({error: `유효하지 않은 만료일 형식입니다. (예: YYYY-MM-DDTHH:MM) - ${e.message}`}, 400);
 			}
 		}
 
