@@ -69,6 +69,7 @@ jobs:
           # Add Google secrets to the environment
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           GOOGLE_SECRET: ${{ secrets.GOOGLE_SECRET }}
+          TEST_API_KEY: ${{ secrets.TEST_API_KEY }}
         run: |
           # install wrangler globally (Node 20)
           npm install -g wrangler
@@ -77,6 +78,7 @@ jobs:
           # Set Google secrets for the worker. These are stored encrypted by Cloudflare.
           echo "${GOOGLE_CLIENT_ID}" | wrangler secret put GOOGLE_CLIENT_ID
           echo "${GOOGLE_SECRET}" | wrangler secret put GOOGLE_SECRET
+          echo "${TEST_API_KEY}" | wrangler secret put TEST_API_KEY
 
           # deploy (wrangler reads CLOUDFLARE_API_TOKEN from env)
           wrangler deploy

@@ -45,24 +45,40 @@ function jsonResponse(obj, status = 200, extraHeaders = {}) {
 
 // 추가: API 키 검증 함수
 async function validateApiKey(request, env) {
-    const authHeader = request.headers.get('Authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return null; // API 키 없음
-    }
-    const apiKey = authHeader.slice(7); // "Bearer " 제거
+	const authHeader = request.headers.get('Authorization');
+	if (!authHeader || !authHeader.startsWith('Bearer ')) {
+		// 401: 인증 자격 증명 없음
+		return jsonResponse({ error: 'API 키가 필요합니다. Authorization 헤더에 Bearer 토큰을 포함해주세요.' }, 401);
+	}
+	const apiKey = authHeader.slice(7); // "Bearer " 제거
 
-    // API_KEY_TO_SUB_KV에서 API 키로 uniqueUserId를 찾음
-    const uniqueUserId = await env.API_KEY_TO_SUB_KV.get(apiKey);
-    if (!uniqueUserId) {
-        return null; // 유효하지 않은 API 키
-    }
+	// 추가: 테스트용 API 키 허용
+	// 환경 변수(TEST_API_KEY)에 정의된 키와 일치하면, KV 조회 없이 즉시 통과시킵니다.
+	if (env.TEST_API_KEY && apiKey === env.TEST_API_KEY) {
+		// brand/index.html의 테스트용 사용자 정보를 참조한 모의 사용자 데이터를 반환합니다.
+		return {
+			user: {
+				uniqueUserId: 'test-user-id-for-viewing-456',
+				name: 'Test User',
+				picture: 'https://lh3.googleusercontent.com/a/default-user=s96-c',
+				apiKey: env.TEST_API_KEY, // 현재 사용된 API 키를 그대로 반환
+			},
+		};
+	}
 
-    // USER_KV에서 uniqueUserId를 기반으로 사용자 데이터 검증
-    const userData = await env.USER_KV.get(`user:${uniqueUserId}`, { type: 'json' });
-    if (!userData || userData.apiKey !== apiKey) {
-        return null; // 사용자 데이터 불일치 또는 키 무효화
-    }
-    return userData; // 유효한 사용자 데이터 반환 (uniqueUserId 포함)
+	// API_KEY_TO_SUB_KV에서 API 키로 uniqueUserId를 찾음
+	const uniqueUserId = await env.API_KEY_TO_SUB_KV.get(apiKey);
+	if (!uniqueUserId) {
+		// 403: 제공된 키가 저장소에 없어 접근이 거부됨
+		return jsonResponse({ error: '유효하지 않은 API 키입니다.' }, 403);
+	}
+
+	// USER_KV에서 uniqueUserId를 기반으로 사용자 데이터 검증
+	const userData = await env.USER_KV.get(`user:${uniqueUserId}`, { type: 'json' });
+	if (!userData || userData.apiKey !== apiKey) {
+		return jsonResponse({ error: '사용자 정보가 일치하지 않거나 키가 만료되었습니다.' }, 403);
+	}
+	return { user: userData }; // 성공 시 사용자 데이터 반환
 }
 
 
@@ -79,12 +95,12 @@ async function handleShorten(req, env){
 		let operationType = 'create'; // 'create' 또는 'update'
 
 		if(alias){ // 커스텀 코드가 제공된 경우
-			const user = await validateApiKey(req, env); // user 객체에 uniqueUserId 포함
-			if (!user) {
-				return jsonResponse({error: '인증되지 않았거나 유효하지 않은 API 키입니다.'}, 401);
+			const validationResult = await validateApiKey(req, env);
+			if (validationResult instanceof Response) { // Response 객체이면 오류이므로 그대로 반환
+				return validationResult;
 			}
             // 변경: API 키로 검증된 사용자의 uniqueUserId를 직접 사용
-            const uniqueUserIdFromApiKey = user.uniqueUserId;
+            const uniqueUserIdFromApiKey = validationResult.user.uniqueUserId;
 
             code = alias.trim();
             // 추가: 커스텀 코드(alias)에 선행 '/'가 있으면 제거
