@@ -122,9 +122,6 @@ async function handleShorten(req, env){
             const existingUrl = await env.RES302_KV.get(fullRedirectPath); // KV 키 변경
             if(existingUrl){
                 operationType = 'update';
-                if (existingUrl === url) {
-                    return jsonResponse({ok:true, code: fullRedirectPath, shortUrl: `${new URL(req.url).origin}/${fullRedirectPath}`, message: 'URL이 이미 존재하며 변경사항이 없습니다.'}, 200);
-                }
             }
 		} else { // alias가 제공되지 않은 경우 (무작위 코드 생성)
 			// 추가: API 키가 있으면 사용자 인증 시도
