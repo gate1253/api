@@ -1,32 +1,32 @@
 const CODE_KEY = 'RES302_codes_list_v1'; // KV에 저장되는 메타 리스트 키
 
 //API 
-function makeCode(len=6){
+function makeCode(len = 6) {
 	const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-	let s='';
-	for(let i=0;i<len;i++) s+=chars[Math.floor(Math.random()*chars.length)];
+	let s = '';
+	for (let i = 0; i < len; i++) s += chars[Math.floor(Math.random() * chars.length)];
 	return s;
 }
 
 // 추가: 12자리 고유 회원 ID 생성 함수
 function makeUniqueId(len = 12) {
-    const arr = new Uint8Array(Math.ceil(len * Math.log2(36) / 8)); // base36에 필요한 바이트 수 계산
-    crypto.getRandomValues(arr);
-    let s = '';
-    for (let i = 0; i < arr.length; i++) {
-        s += (arr[i] % 36).toString(36); // base36으로 변환
-    }
-    return s.slice(0, len);
+	const arr = new Uint8Array(Math.ceil(len * Math.log2(36) / 8)); // base36에 필요한 바이트 수 계산
+	crypto.getRandomValues(arr);
+	let s = '';
+	for (let i = 0; i < arr.length; i++) {
+		s += (arr[i] % 36).toString(36); // base36으로 변환
+	}
+	return s.slice(0, len);
 }
 
 // 추가: API 키 생성 함수 (더 긴 길이)
 function makeApiKey(len = 32) {
-    const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-    let key = '';
-    for (let i = 0; i < len; i++) {
-        key += chars[Math.floor(Math.random() * chars.length)];
-    }
-    return key;
+	const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+	let key = '';
+	for (let i = 0; i < len; i++) {
+		key += chars[Math.floor(Math.random() * chars.length)];
+	}
+	return key;
 }
 
 // 변경: CORS 유틸 추가
@@ -39,8 +39,8 @@ function corsHeaders() {
 	};
 }
 function jsonResponse(obj, status = 200, extraHeaders = {}) {
-	const headers = Object.assign({}, corsHeaders(), {'Content-Type':'application/json'}, extraHeaders);
-	return new Response(JSON.stringify(obj), {status, headers});
+	const headers = Object.assign({}, corsHeaders(), { 'Content-Type': 'application/json' }, extraHeaders);
+	return new Response(JSON.stringify(obj), { status, headers });
 }
 
 // 추가: API 키 검증 함수
@@ -82,14 +82,14 @@ async function validateApiKey(request, env) {
 }
 
 
-async function handleShorten(req, env){
-	try{
+async function handleShorten(req, env) {
+	try {
 		const body = await req.json(); // 요청 본문 파싱
-		let {url, alias, type, expiresAt} = body; // R1을 위한 expiresAt 파라미터
-		if(!url) return jsonResponse({error:'url 필요'}, 400);
+		let { url, alias, type, expiresAt } = body; // R1을 위한 expiresAt 파라미터
+		if (!url) return jsonResponse({ error: 'url 필요' }, 400);
 		// 간단한 url 보정
-		if(!/^https?:\/\//i.test(url)) url = 'https://' + url;
-		
+		if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
+
 		// 추가: type에 따라 동적으로 shortUrl 생성
 		const validTypes = ['r1', 'r2', 'r3', 'r5'];
 		const serviceType = validTypes.includes(type) ? type : 'r3'; // type이 없거나 유효하지 않으면 'r3'를 기본값으로 사용
@@ -99,30 +99,30 @@ async function handleShorten(req, env){
 		let operationType = 'create'; // 'create' 또는 'update'
 		let uniqueUserIdFromApiKey = null; // API 키로 확인된 사용자 ID
 
-		if(alias){ // 커스텀 코드가 제공된 경우
+		if (alias) { // 커스텀 코드가 제공된 경우
 			const validationResult = await validateApiKey(req, env);
 			if (validationResult instanceof Response) { // Response 객체이면 오류이므로 그대로 반환
 				return validationResult;
 			}
-            // 변경: API 키로 검증된 사용자의 uniqueUserId를 직접 사용
-            uniqueUserIdFromApiKey = validationResult.user.uniqueUserId;
+			// 변경: API 키로 검증된 사용자의 uniqueUserId를 직접 사용
+			uniqueUserIdFromApiKey = validationResult.user.uniqueUserId;
 
-            code = alias.trim();
-            // 추가: 커스텀 코드(alias)에 선행 '/'가 있으면 제거
-            if (code.startsWith('/')) {
-                code = code.substring(1);
-            }
-            if (!code) { // '/'만 있었거나 trim 후 비어있는 경우
-                return jsonResponse({error: '유효하지 않은 커스텀 코드입니다.'}, 400);
-            }
+			code = alias.trim();
+			// 추가: 커스텀 코드(alias)에 선행 '/'가 있으면 제거
+			if (code.startsWith('/')) {
+				code = code.substring(1);
+			}
+			if (!code) { // '/'만 있었거나 trim 후 비어있는 경우
+				return jsonResponse({ error: '유효하지 않은 커스텀 코드입니다.' }, 400);
+			}
 
-            fullRedirectPath = `${uniqueUserIdFromApiKey}/${code}`; // 리다이렉트 경로에 검증된 uniqueUserId 사용
-            
-            // KV에서 사용자별 alias 존재 여부 확인
-            const existingUrl = await env.RES302_KV.get(fullRedirectPath); // KV 키 변경
-            if(existingUrl){
-                operationType = 'update';
-            }
+			fullRedirectPath = `${uniqueUserIdFromApiKey}/${code}`; // 리다이렉트 경로에 검증된 uniqueUserId 사용
+
+			// KV에서 사용자별 alias 존재 여부 확인
+			const existingUrl = await env.RES302_KV.get(fullRedirectPath); // KV 키 변경
+			if (existingUrl) {
+				operationType = 'update';
+			}
 		} else { // alias가 제공되지 않은 경우 (무작위 코드 생성)
 			// 추가: API 키가 있으면 사용자 인증 시도
 			const authHeader = req.headers.get('Authorization');
@@ -134,15 +134,15 @@ async function handleShorten(req, env){
 				uniqueUserIdFromApiKey = validationResult.user.uniqueUserId;
 			}
 
-			for(let i=0;i<6;i++){
+			for (let i = 0; i < 6; i++) {
 				const c = makeCode();
 				// 사용자가 인증된 경우, 사용자별 경로로 충돌 확인. 아니면 글로벌 경로로 확인.
 				const checkPath = uniqueUserIdFromApiKey ? `${uniqueUserIdFromApiKey}/${c}` : c;
-				if(!(await env.RES302_KV.get(checkPath))){
+				if (!(await env.RES302_KV.get(checkPath))) {
 					code = c; break;
 				}
 			}
-			if(!code) code = makeCode(8); // 6번 시도 후에도 코드 생성 실패 시 대체
+			if (!code) code = makeCode(8); // 6번 시도 후에도 코드 생성 실패 시 대체
 
 			if (uniqueUserIdFromApiKey) {
 				fullRedirectPath = `${uniqueUserIdFromApiKey}/${code}`;
@@ -150,7 +150,7 @@ async function handleShorten(req, env){
 				fullRedirectPath = code; // 익명 사용자는 이전과 같이 글로벌 경로 사용
 			}
 		}
-		
+
 		// KV에 저장할 최종 URL 값
 		let urlToStore = url;
 		let contentLength = null; // r5 타입에서 사용할 content-length
@@ -165,13 +165,13 @@ async function handleShorten(req, env){
 				}
 			} catch (e) {
 				console.warn(`Could not fetch content-length for ${url}:`, e.message);
-				return jsonResponse({error:`Could not fetch content-length for ${url}:`}, 400);
+				return jsonResponse({ error: `Could not fetch content-length for ${url}:` }, 400);
 			}
 
 			// r5 타입은 r2 서비스로 리디렉션되도록, 내부적으로 r2를 호출하여 그 결과 URL을 저장합니다.
 			const newBody = { ...body, type: 'r2', alias: undefined };
 			const newReq = new Request(req, { body: JSON.stringify(newBody) });
-			
+
 			const r2Response = await handleShorten(newReq, env);
 			if (!r2Response.ok) return r2Response; // r2 처리 중 오류 발생 시 그대로 반환
 
@@ -199,7 +199,7 @@ async function handleShorten(req, env){
 		// R1 타입: 만료 시간을 REQ_TIME_KV에 저장
 		if (serviceType === 'r1') {
 			if (!expiresAt) {
-				return jsonResponse({error: 'R1 타입은 만료일(expiresAt)이 필수입니다.'}, 400);
+				return jsonResponse({ error: 'R1 타입은 만료일(expiresAt)이 필수입니다.' }, 400);
 			}
 
 			// r1 타입일 때, url의 cnt 파라미터 값을 확인하고 '${cnt}'로 설정
@@ -225,14 +225,17 @@ async function handleShorten(req, env){
 					throw new Error(`Invalid date format: ${expiresAt}`);
 				}
 
-				await env.REQ_TIME_KV.put(fullRedirectPath, expirationDate.getTime().toString());
+				const expirationSeconds = Math.floor(expirationDate.getTime() / 1000);
+				await env.REQ_TIME_KV.put(fullRedirectPath, expirationDate.getTime().toString(), { expiration: expirationSeconds });
+				// RES302_KV에도 만료 시간 적용
+				await env.RES302_KV.put(fullRedirectPath, urlToStore, { expiration: expirationSeconds });
 			} catch (e) {
-				return jsonResponse({error: `유효하지 않은 만료일 형식입니다. (예: YYYY-MM-DDTHH:MM) - ${e.message}`}, 400);
+				return jsonResponse({ error: `유효하지 않은 만료일 형식입니다. (예: YYYY-MM-DDTHH:MM) - ${e.message}` }, 400);
 			}
+		} else {
+			// KV에 URL 저장/업데이트 (fullRedirectPath를 키로 사용) - r1이 아닐 때는 만료 기간 없음
+			await env.RES302_KV.put(fullRedirectPath, urlToStore);
 		}
-
-		// KV에 URL 저장/업데이트 (fullRedirectPath를 키로 사용)
-		await env.RES302_KV.put(fullRedirectPath, urlToStore);
 
 		// 메타 리스트(CODE_KEY) 업데이트
 		const raw = await env.RES302_KV.get(CODE_KEY);
@@ -245,20 +248,20 @@ async function handleShorten(req, env){
 				list[index].updatedAt = new Date().toISOString(); // 업데이트 시간 추가
 			} else {
 				// 리스트에 없는 경우 추가 (새로운 커스텀 코드를 업데이트한 경우 등)
-				const newItem = {code: fullRedirectPath, url: urlToStore, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()};
+				const newItem = { code: fullRedirectPath, url: urlToStore, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
 				if (contentLength) newItem.contentLength = contentLength;
 				list.push(newItem);
 			}
 		} else { // operationType === 'create'
-			const newItem = {code: fullRedirectPath, url: urlToStore, createdAt: new Date().toISOString()};
+			const newItem = { code: fullRedirectPath, url: urlToStore, createdAt: new Date().toISOString() };
 			list.push(newItem);
 		}
 
 		await env.RES302_KV.put(CODE_KEY, JSON.stringify(list));
-		
+
 		const status = operationType === 'update' ? 200 : 201;
 		const message = operationType === 'update' ? 'URL이 업데이트되었습니다.' : '단축 URL이 생성되었습니다.';
-		
+
 		const responsePayload = {
 			ok: true,
 			code: fullRedirectPath,
@@ -269,13 +272,13 @@ async function handleShorten(req, env){
 		responsePayload.shortUrl = `https://${serviceType}.ggm.kr/${fullRedirectPath}`;
 
 		return jsonResponse(responsePayload, status);
-	}catch(e){
+	} catch (e) {
 		console.error('handleShorten error:', e.message, e.stack); // 오류 로깅 강화
-		return jsonResponse({error:'서버 오류'}, 500);
+		return jsonResponse({ error: '서버 오류' }, 500);
 	}
 }
 
-async function handleList(env){
+async function handleList(env) {
 	const raw = await env.RES302_KV.get(CODE_KEY);
 	const list = raw ? JSON.parse(raw) : [];
 	return jsonResponse(list, 200);
@@ -412,11 +415,11 @@ async function handleAuthCallback(request, env) {
 }
 
 
-export async function handleRequest(request, env){
+export async function handleRequest(request, env) {
 
 	// OPTIONS preflight 처리 추가
-	if(request.method === 'OPTIONS'){
-		return new Response(null, {status:204, headers: corsHeaders()});
+	if (request.method === 'OPTIONS') {
+		return new Response(null, { status: 204, headers: corsHeaders() });
 	}
 
 	const url = new URL(request.url);
@@ -428,7 +431,7 @@ export async function handleRequest(request, env){
 	}
 
 	// API: POST /api/shorten
-	if(request.method === 'POST' && pathname === '/api/shorten'){
+	if (request.method === 'POST' && pathname === '/api/shorten') {
 		return handleShorten(request, env);
 	}
 	// API: GET /api/list
@@ -436,7 +439,7 @@ export async function handleRequest(request, env){
 	// 	return handleList(env);
 	// }
 	// 기타
-	return new Response('Not found', {status:404, headers: corsHeaders()});
+	return new Response('Not found', { status: 404, headers: corsHeaders() });
 }
 
 export default {
