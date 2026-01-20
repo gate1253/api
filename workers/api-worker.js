@@ -87,8 +87,8 @@ async function handleShorten(req, env) {
 		const body = await req.json(); // 요청 본문 파싱
 		let { url, alias, type, expiresAt } = body; // R1을 위한 expiresAt 파라미터
 		if (!url) return jsonResponse({ error: 'url 필요' }, 400);
-		// 간단한 url 보정
-		if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
+		// 간단한 url 보정 (http, https, ws, wss 모두 허용)
+		if (!/^(https?|wss?):\/\//i.test(url)) url = 'https://' + url;
 
 		// 추가: type에 따라 동적으로 shortUrl 생성
 		const validTypes = ['r1', 'r2', 'r3', 'r5'];
